@@ -7,6 +7,11 @@ description: |
     `sigma convert` time. Questions 1-5 use baseline placeholders (global map + field-name
     fallback) and must convert with only the shipped map. Question 6 uses a CUSTOM token
     (%client_ip%) and only converts once the user map defines it.
+
+    Field notes: queries use the source's own logsource (kratos) and FLAT field names
+    (user.name, identity_id, http.request.headers.x-forwarded-for, ...). The `event_data.*`
+    nesting is internal to the placeholder resolver (it reads the alert doc that way); the
+    emitted OQL must use the flat names the searched index actually stores.
 type: detection
 detection_id: 'e1aaf67a-b666-4459-94e0-5dfc53344670'
 detection_category: ''
@@ -16,92 +21,100 @@ contributors:
 created: 2026-07-01
 questions:
   - question: "[baseline %document_id%] What are the full details of this login event?"
-    context: "Pivots on the alert document itself via the global soc_id bridge. Confirms the account, host, client IP, and endpoint that produced this session."
+    context: "Pivots on the exact source event via the global soc_id->document_id bridge. Confirms the account, host, client IP, and endpoint that produced this session."
+    range: +/-5m
     query: |
         aggregation: false
         logsource:
-            product: alert
+            product: kratos
+            service: application
         detection:
             selection:
                 document_id|expand: '%document_id%'
             condition: selection
         fields:
-            - event_data.user.name
-            - event_data.host.name
-            - event_data.http.request.headers.x-real-ip
-            - event_data.http.uri
-            - event_data.event.action
+            - user.name
+            - host.name
+            - http.request.headers.x-real-ip
+            - http.uri
+            - event.action
   - question: "[baseline %User%] What other SOC console authentication activity involves this account?"
     context: "Global %User% token (user.name). Look for a burst of failures before this success, or logins outside expected hours, for the same account."
     range: -7d
     query: |
         aggregation: true
         logsource:
-            product: alert
+            product: kratos
+            service: application
         detection:
             selection:
-                event_data.user.name|expand: '%User%'
+                user.name|expand: '%User%'
             condition: selection
         fields:
-            - event_data.event.action
-            - event_data.host.name
-            - event_data.http.request.headers.x-real-ip
-  - question: "[baseline %hostname%] What other alerts fired on this Security Onion node?"
-    context: "Global %hostname% token (host.name). Establishes what else is happening on the manager/node the console login landed on."
+            - event.action
+            - host.name
+            - http.request.headers.x-real-ip
+  - question: "[baseline %hostname%] What other SOC console authentication occurred on this node?"
+    context: "Global %hostname% token (host.name). Establishes the other console auth activity on the manager/node this login landed on."
     range: -24h
     query: |
         aggregation: true
         logsource:
-            product: alert
+            product: kratos
+            service: application
         detection:
             selection:
-                event_data.host.name|expand: '%hostname%'
+                host.name|expand: '%hostname%'
             condition: selection
         fields:
-            - rule.name
-            - event_data.user.name
+            - event.action
+            - user.name
+            - http.request.headers.x-real-ip
   - question: "[fallback %identity_id%] What other activity is tied to this Kratos identity?"
     context: "Field-name fallback (path #2): the token name equals the event field `identity_id`, so it resolves with NO map entry. Tracks the same identity across sessions."
     range: -7d
     query: |
         aggregation: true
         logsource:
-            product: alert
+            product: kratos
+            service: application
         detection:
             selection:
-                event_data.identity_id|expand: '%identity_id%'
+                identity_id|expand: '%identity_id%'
             condition: selection
         fields:
-            - event_data.event.action
-            - event_data.user.name
-            - event_data.http.request.headers.x-real-ip
+            - event.action
+            - user.name
+            - http.request.headers.x-real-ip
   - question: "[fallback %session_id%] What events belong to this issued session?"
     context: "Field-name fallback (path #2) on `session_id`. Follows what the freshly issued Kratos session cookie was used for."
     range: -7d
     query: |
         aggregation: false
         logsource:
-            product: alert
+            product: kratos
+            service: application
         detection:
             selection:
-                event_data.session_id|expand: '%session_id%'
+                session_id|expand: '%session_id%'
             condition: selection
         fields:
-            - event_data.event.action
-            - event_data.http.uri
-            - event_data.user.name
+            - event.action
+            - http.uri
+            - user.name
   - question: "[CUSTOM %client_ip%] What other accounts logged in from this client IP?"
     context: "CUSTOM user-map token. %client_ip% is not a global token and there is no field literally named client_ip, so this query only converts once the user map defines `client_ip: http.request.headers.x-forwarded-for`. Removing that entry demonstrates path #3 (loud convert failure) vs path #1 (resolved)."
     range: -7d
     query: |
         aggregation: true
         logsource:
-            product: alert
+            product: kratos
+            service: application
         detection:
             selection:
-                event_data.http.request.headers.x-forwarded-for|expand: '%client_ip%'
+                http.request.headers.x-forwarded-for|expand: '%client_ip%'
             condition: selection
         fields:
-            - event_data.user.name
-            - event_data.event.action
-            - event_data.host.name
+            - user.name
+            - event.action
+            - host.name
