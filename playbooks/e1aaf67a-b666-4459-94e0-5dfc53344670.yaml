@@ -21,13 +21,13 @@ contributors:
 created: 2026-07-01
 questions:
   - question: "[baseline %document_id%] What are the full details of this login event?"
-    context: "Pivots on the exact source event via the global soc_id->document_id bridge. Confirms the account, host, client IP, and endpoint that produced this session."
-    range: +/-5m
+    context: "Pivots on the alert document itself via the global soc_id->document_id bridge (matches _id / log.id.uid / event.id). Confirms the account, host, client IP, and endpoint that produced this session."
+    answer_sources:
+      - alert
     query: |
         aggregation: false
         logsource:
-            product: kratos
-            service: application
+            category: alert
         detection:
             selection:
                 document_id|expand: '%document_id%'
