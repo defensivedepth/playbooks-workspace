@@ -21,13 +21,12 @@ contributors:
 created: 2026-07-01
 questions:
   - question: "[baseline %document_id%] What are the full details of this login event?"
-    context: "Pivots on the alert document itself via the global soc_id->document_id bridge (matches _id / log.id.uid / event.id). Confirms the account, host, client IP, and endpoint that produced this session."
-    answer_sources:
-      - alert
+    context: "Pivots on this exact event by its unique document id. %document_id% (global soc_id bridge) resolves to the doc's _id, and the field document_id maps to _id (unconditional, sigma_so_pipeline.yaml), so the OQL is a clean `_id:<id>` lookup - no tags:alert scoping needed. Confirms the account, host, client IP, and endpoint that produced this session."
     query: |
         aggregation: false
         logsource:
-            category: alert
+            product: kratos
+            service: application
         detection:
             selection:
                 document_id|expand: '%document_id%'
